@@ -1,39 +1,35 @@
 import os
-import requests
+from flask import Flask, request
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# Telegram Bot Token (from Render environment)
-TOKEN = os.getenv("BOT_TOKEN")
+# Get your token from environment
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise RuntimeError("BOT_TOKEN not set! Add it in Render Environment Variables.")
 
-# Command: /start
+# Create Telegram bot app
+application = ApplicationBuilder().token(BOT_TOKEN).build()
+
+# --- Command Handlers ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "👋 Welcome to *FreeCertify Bot!* 🎓\n"
-        "I’ll send you free certification courses from trusted platforms.\n\n"
-        "➡️ Type /courses to see what’s available!",
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text("👋 Hello! Your bot is now running 24/7 on Render (Webhook Mode)!")
 
-# Command: /courses
-async def courses(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    free_courses = [
-        ("FreeCodeCamp – Web Dev", "https://www.freecodecamp.org/learn/"),
-        ("Google – Digital Marketing", "https://learndigital.withgoogle.com/digitalunlocked/"),
-        ("Coursera – Free AI for Everyone", "https://www.coursera.org/learn/ai-for-everyone"),
-        ("edX – Python Basics", "https://www.edx.org/learn/python")
-    ]
-    msg = "🎯 *Current Free Certification Courses:*\n\n"
-    for name, link in free_courses:
-        msg += f"✅ [{name}]({link})\n"
-    await update.message.reply_text(msg, parse_mode="Markdown")
+application.add_handler(CommandHandler("start", start))
 
-# Main app
+# --- Flask Web Server ---
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "✅ Bot is active.", 200
+
+@app.route(f'/webhook/{BOT_TOKEN}', methods=['POST'])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), application.bot)
+    application.create_task(application.process_update(update))
+    return "ok", 200
+
 if __name__ == "__main__":
-    print("✅ Bot is running... (only free courses will be shown)")
-    app = ApplicationBuilder().token(TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("courses", courses))
-
-    app.run_polling()
+    # Local debug (Render auto-uses gunicorn)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
